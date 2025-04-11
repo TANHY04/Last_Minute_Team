@@ -33,7 +33,7 @@ def loadItemsDf():
     #itemsDf  
     return pd.read_csv ('C:/Users/gztan/Datasets/items.csv', encoding='utf-8')
 merchantID = st.text_input("Enter your merchant ID:")
-todayDate = st.text_input("Enter today date (day/month/year):")
+todayDate = st.text_input("Enter a date (day/month/year):")
 if merchantID:
     if todayDate:
         st.write("Your merchant ID:", merchantID)
@@ -336,7 +336,7 @@ if merchantID:
                     filteredDf.loc[mask, 'price_cluster_label'] = [label_map[c] for c in clusters]
                 else:
                     # If not enough city data for clustering
-                    filteredDf.loc[filteredDf['cuisine_tag'] == int(foodType), 'price_cluster_label'] = 'not_enough_data'
+                    filteredDf.loc[filteredDf['cuisine_tag'] == (foodType), 'price_cluster_label'] = 'not_enough_data'
 
             st.write(strOutput)
             st.dataframe(filteredDf[['item_id','cuisine_tag','item_name','item_price','price_cluster_label']])
@@ -344,6 +344,11 @@ if merchantID:
         
         def analyzeDailySales(merchantID, todayDate, numResults):    
             merchantDateDf=sliceTransactionByMerchantAndDate(merchantID,todayDate)
+            if merchantDateDf.empty:
+                st.warning(f"No sales data found for Merchant {merchantID} on {todayDate}.")
+                return  # Exit early if no data
+            transactionItemsDf=loadTransactionItemsDf()
+            itemsDf=loadItemsDf()
             merchantDateDf['order_time'] = pd.to_datetime(merchantDateDf['order_time'])
             # Round down the time to the nearest 2-hour block
             merchantDateDf['sales_time'] = merchantDateDf['order_time'].dt.floor('1H').dt.strftime('%H%M')
@@ -377,10 +382,30 @@ if merchantID:
                 end_hour = (hour + 2) % 24
                 time_range = f"{sales_time}-{end_hour:02}00"
                 st.write(f"⏰ {time_range}: RM {total:.2f}")
-            st.dataframe(merchantDateDf)
+            st.write(f'Your daily sales on ({todayDate}):')
+            merchantDateDf = merchantDateDf.sort_values(by='order_time', ascending=True)
+            # Step 1: Merge merchant data with transaction items to get item_id per order
+            merged_df = pd.merge(merchantDateDf, transactionItemsDf[['order_id', 'item_id']], on='order_id', how='left')
+
+            # Step 2: Merge with itemsDf to get item_name
+            merged_df = pd.merge(merged_df, itemsDf[['item_id', 'item_name']], on='item_id', how='left')
+
+            # Step 3 (Optional): Drop columns you no longer need (like order_id or item_id)
+            merged_df = merged_df.drop(columns=['item_id'])
+
+            # Step 4 (Optional): Reorder columns if you want item_name first
+            cols = ['item_name'] + [col for col in merged_df.columns if col != 'item_name']
+            merged_df = merged_df[cols]
+
+            st.dataframe(merged_df[['order_id','item_name','order_time','order_value', 'eater_id']])
         
         def printSalesAtTimeSlotDf(merchantID, todayDate, salesAtTimeSlotView):
             merchantDateDf=sliceTransactionByMerchantAndDate(merchantID,todayDate)
+            if merchantDateDf.empty:
+                st.warning(f"No sales data found for Merchant {merchantID} on {todayDate}.")
+                return  # Exit early if no data
+            transactionItemsDf=loadTransactionItemsDf()
+            itemsDf=loadItemsDf()
             merchantDateDf['order_time'] = pd.to_datetime(merchantDateDf['order_time'])
             # Round down the time to the nearest 2-hour block
             merchantDateDf['sales_time'] = merchantDateDf['order_time'].dt.floor('1H').dt.strftime('%H%M')
@@ -412,7 +437,21 @@ if merchantID:
             
             # Display result
             st.write(f"🕒 Sales for time slot starting at {formatted_time}:")
-            st.dataframe(filteredDf)
+            filteredDf = filteredDf.sort_values(by='order_time', ascending=True)
+            # Step 1: Merge merchant data with transaction items to get item_id per order
+            merged_df = pd.merge(filteredDf, transactionItemsDf[['order_id', 'item_id']], on='order_id', how='left')
+
+            # Step 2: Merge with itemsDf to get item_name
+            merged_df = pd.merge(merged_df, itemsDf[['item_id', 'item_name']], on='item_id', how='left')
+
+            # Step 3 (Optional): Drop columns you no longer need (like order_id or item_id)
+            merged_df = merged_df.drop(columns=['item_id'])
+
+            # Step 4 (Optional): Reorder columns if you want item_name first
+            cols = ['item_name'] + [col for col in merged_df.columns if col != 'item_name']
+            merged_df = merged_df[cols]
+
+            st.dataframe(merged_df[['order_id','item_name','order_time','order_value', 'eater_id']])
             
         def analyzeMostOrderedFood(merchantID, todayDate, numMostOrderedFood=5):
             numMostOrderedFood = int(numMostOrderedFood)
