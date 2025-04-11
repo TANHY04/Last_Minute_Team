@@ -7,22 +7,27 @@ from rapidfuzz import fuzz
 from word2number import w2n
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import pandas as pd
+from collections import Counter
+import numpy as np
 st.title('Generative Functions')
 def loadTransactionDataDf():
     #transactionDataDf
-    return pd.read_csv('Datasets/transaction_data.csv', encoding='utf-8')
+    return pd.read_csv('C:/Users/gztan/Datasets/transaction_data.csv', encoding='utf-8')
 def loadTransactionItemsDf():
     #transactionItemsDf
-    return pd.read_csv ('Datasets/transaction_items.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/gztan/Datasets/transaction_items.csv', encoding='utf-8')
 def loadMerchantDf():
     #merchantDf
-    return pd.read_csv ('Datasets/merchant.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/gztan/Datasets/merchant.csv', encoding='utf-8')
 def loadKeywordsDf():
     #keywordsDf
-    return pd.read_csv ('Datasets/keywords.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/gztan/Datasets/keywords.csv', encoding='utf-8')
 def loadItemsDf():  
     #itemsDf  
-    return pd.read_csv ('Datasets/items.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/gztan/Datasets/items.csv', encoding='utf-8')
 merchantID = st.text_input("Enter your merchant ID:")
 if merchantID:
     st.write("Your merchant ID:", merchantID)
@@ -38,6 +43,7 @@ if merchantID:
                 return w2n.word_to_num(value)
             except ValueError:
                 return "Invalid input: could not convert to number."
+    
     def popularMerchant(location,numberOfPopularMerchants):
         numberOfPopularMerchants=convert_to_number(numberOfPopularMerchants)
         location=str(location)
@@ -72,10 +78,6 @@ if merchantID:
         for merchant, freq in popularMerchants:
             st.text(f"{i}.    {merchant}    ({freq} transactions)")
             i += 1
-            
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-    import pandas as pd
 
     def mergeKeyword():
         keywordsDf = loadKeywordsDf()
@@ -125,10 +127,17 @@ if merchantID:
             result[col] = result[col].fillna(0).astype(int)
 
         return result.drop(columns=['item_name_clean'])
+    def getItemsKeywordsAtLocation(location):
+        itemsKeywordViewDf = mergeKeyword()
+        merchantDf=loadMerchantDf()
+        merchant_ids_in_city = merchantDf[merchantDf['city_id'] == location]['merchant_id']
+        itemsKeywordViewDf = itemsKeywordViewDf[
+            itemsKeywordViewDf['merchant_id'].isin(merchant_ids_in_city)
+        ]
+        return itemsKeywordViewDf
     def viewInterpretion(merchantID):
         # Merge keyword data (assuming mergeKeyword is a function you have defined)
         itemsKeywordDf = mergeKeyword()
-        
         # Filter the dataframe based on the given merchant ID
         filteredDf = itemsKeywordDf[itemsKeywordDf['merchant_id'] == merchantID]
         
@@ -136,7 +145,7 @@ if merchantID:
         averageViews = filteredDf['view'].mean()
 
         # Step 3: Apply KMeans clustering on the entire 'view' feature of the whole dataset
-        kmeans = KMeans(n_clusters=3, random_state=42)
+        kmeans = KMeans(n_clusters=3, random_state=42,n_init='auto')
         itemsKeywordDf['view_category'] = kmeans.fit_predict(itemsKeywordDf[['view']])
 
         # Step 4: Find the cluster of the merchant's average views based on the overall 'view' distribution
@@ -155,7 +164,43 @@ if merchantID:
 
         # Step 6: Display the interpretation and the filtered dataframe in Streamlit
         st.write(f'Your store has an average view of {averageViews:.2f} and {doingPerformance}')
-        st.dataframe(filteredDf)
+        # Get all merchants in the selected location
+        totalDf=getItemsKeywordsAtLocation(location)
+        view_data = totalDf['view'].dropna().values.reshape(-1, 1)
+
+        # Optional: only cluster if enough data points
+        if len(view_data) >= 3:
+            # Step 2: Fit KMeans on total view data
+            kmeans = KMeans(n_clusters=3, n_init=10, random_state=42)
+            kmeans.fit(view_data)
+
+            # Step 3: Predict clusters for filteredDf
+            filteredDf = filteredDf.copy()  # avoid SettingWithCopyWarning
+            filteredDf['view_cluster'] = kmeans.predict(filteredDf['view'].values.reshape(-1, 1))
+
+            # Step 4: Map cluster labels to names based on center order (e.g., low, medium, high)
+            centers = kmeans.cluster_centers_.flatten()
+            ordered_labels = np.argsort(centers)
+            label_map = {ordered_labels[0]: 'low_view', ordered_labels[1]: 'medium_view', ordered_labels[2]: 'high_view'}
+
+            filteredDf['view_cluster_label'] = filteredDf['view_cluster'].map(label_map)
+
+        else:
+            filteredDf['view_cluster_label'] = 'not_enough_data'
+        filteredDf = filteredDf.copy()
+        # Calculate order/view ratio
+        filteredDf['order_view_ratio'] = filteredDf['order'] / filteredDf['view']
+
+        # Filter rows where order <= 10% of view
+        lowConversionDf = filteredDf[filteredDf['order_view_ratio'] <= 0.01]
+        if not lowConversionDf.empty:
+            message = "⚠️ The following items have low order-to-view conversion (≤ 1%):\n\n"
+            for _, row in lowConversionDf.iterrows():
+                message += f"- Merchant {row['merchant_id']} has {int(row['order'])} orders and {int(row['view'])} views (conversion: {round(row['order_view_ratio']*100, 2)}%)\n"
+            st.text(message)
+        else:
+            st.text("✅ All items have a healthy order-to-view conversion rate.")
+        st.dataframe(filteredDf[['item_id','item_name','item_price','view','menu','checkout','order','view_cluster_label']])
         
     def viewMostViewedFood(merchantID, numResultsFoodView):
         # Merge keyword data (assuming mergeKeyword is a function you have defined)
@@ -185,37 +230,71 @@ if merchantID:
             # Stop if the required number of results is reached
             if i == numResultsFoodView:
                 break
-    def analyzeFoodType(merchantID,location):
-        # Merge keyword data (assuming mergeKeyword is a function you have defined)
-        merchantDf=loadMerchantDf()
-        itemsKeywordAnalyzeFoodTypeDf = mergeKeyword()
-        # Filter the dataframe based on the given merchant ID
+    def analyzeFoodType(merchantID, location):
+        # Load data
+        itemsKeywordAnalyzeFoodTypeDf = getItemsKeywordsAtLocation(location)
+
+        # Filter current merchant data
         filteredDf = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['merchant_id'] == merchantID]
-        # Get merchant_ids from merchantDf where city_id == 1
-        merchant_ids_in_city = merchantDf[merchantDf['city_id'] == location]['merchant_id']
 
-        # Filter filteredDf to keep only those merchant_ids
-        itemsKeywordAnalyzeFoodTypeDf = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['merchant_id'].isin(merchant_ids_in_city)]
-        st.dataframe(itemsKeywordAnalyzeFoodTypeDf)
-        import numpy as np
-
-        # Get normalized value counts (percentages)
+        # Calculate cuisine tag percentages for the merchant
         value_percentages = (filteredDf['cuisine_tag'].value_counts(normalize=True) * 100).round(2)
-
-        # Convert to NumPy array of [cuisine_tag, percentage]
         mode_array = np.array([[tag, pct] for tag, pct in value_percentages.items()])
 
+        st.write('Your shop is selling these type of food:')
         i = 1
-        st.write('Your shop is selling these type of food: ')
-        for foodType, percentage in mode_array:
-            filtered_cuisine = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['cuisine_tag'] == foodType]
-            # Get the frequency of merchant_id
-            merchant_frequency = filtered_cuisine['merchant_id'].nunique()
-            st.text(f"{i}.    {foodType}    ({percentage} %) {merchant_frequency}")
-            i += 1
-        strOutput=""
-        
+        storeTypeAndSell = []
 
+        # Prepare the output DataFrame
+        filteredDf = filteredDf.copy()
+        filteredDf['price_cluster_label'] = None
+
+        # Count total unique merchants in city for competition calculation
+        totalNumMerchants = itemsKeywordAnalyzeFoodTypeDf['merchant_id'].nunique()
+        strOutput = ""
+
+        for foodType, percentage in mode_array:
+            # Filter city-wide items of the same cuisine
+            filtered_cuisine = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['cuisine_tag'] == (foodType)]
+
+            # Count number of unique merchants selling this cuisine
+            merchant_frequency = filtered_cuisine['merchant_id'].nunique()
+            storeTypeAndSell.append([foodType, merchant_frequency])
+
+            st.text(f"{i}.    {foodType}    ({percentage} %)")
+            i += 1
+
+            # Competition level
+            competition = merchant_frequency / totalNumMerchants * 100
+            if competition < 20:
+                strOutput += f"The competition of food type {foodType} is low. There are only {merchant_frequency} merchants selling {foodType} at your location. "
+            elif competition < 60:
+                strOutput += f"The competition of food type {foodType} is moderate. There are {merchant_frequency} merchants selling {foodType} at your location. "
+            else:
+                strOutput += f"The competition of food type {foodType} is very high. There are a huge number of {merchant_frequency} merchants selling {foodType} at your location. "
+
+            # --- Price Clustering ---
+            city_prices = filtered_cuisine['item_price'].values.reshape(-1, 1)
+
+            if len(city_prices) >= 3:
+                kmeans = KMeans(n_clusters=3, n_init=10, random_state=42)
+                kmeans.fit(city_prices)
+
+                # Get cluster label mapping
+                cluster_order = sorted(range(3), key=lambda i: kmeans.cluster_centers_[i][0])
+                label_map = {cluster_order[0]: 'cheap', cluster_order[1]: 'moderate', cluster_order[2]: 'expensive'}
+
+                # Predict clusters for this merchant's items with the same cuisine
+                mask = filteredDf['cuisine_tag'] == (foodType)
+                shop_prices = filteredDf.loc[mask, 'item_price'].values.reshape(-1, 1)
+                clusters = kmeans.predict(shop_prices)
+                filteredDf.loc[mask, 'price_cluster_label'] = [label_map[c] for c in clusters]
+            else:
+                # If not enough city data for clustering
+                filteredDf.loc[filteredDf['cuisine_tag'] == int(foodType), 'price_cluster_label'] = 'not_enough_data'
+
+        st.write(strOutput)
+        st.dataframe(filteredDf[['item_id','cuisine_tag','item_name','item_price','price_cluster_label']])
         
         
     #1) Find the popular merchants based on frequency of sales in current location
