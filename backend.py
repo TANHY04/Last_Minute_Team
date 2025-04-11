@@ -12,27 +12,30 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 from collections import Counter
 import numpy as np
+
 st.title('Generative Functions')
 def loadTransactionDataDf():
     #transactionDataDf
-    return pd.read_csv('C:/Users/gztan/Datasets/transaction_data.csv', encoding='utf-8')
+    return pd.read_csv('C:/Users/User/ENGYIFAN_2025/Datasets/transaction_data.csv', encoding='utf-8')
 def loadTransactionItemsDf():
     #transactionItemsDf
-    return pd.read_csv ('C:/Users/gztan/Datasets/transaction_items.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/User/ENGYIFAN_2025/Datasets/transaction_items.csv', encoding='utf-8')
 def loadMerchantDf():
     #merchantDf
-    return pd.read_csv ('C:/Users/gztan/Datasets/merchant.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/User/ENGYIFAN_2025/Datasets/merchant.csv', encoding='utf-8')
 def loadKeywordsDf():
     #keywordsDf
-    return pd.read_csv ('C:/Users/gztan/Datasets/keywords.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/User/ENGYIFAN_2025/Datasets/keywords.csv', encoding='utf-8')
 def loadItemsDf():  
     #itemsDf  
-    return pd.read_csv ('C:/Users/gztan/Datasets/items.csv', encoding='utf-8')
+    return pd.read_csv ('C:/Users/User/ENGYIFAN_2025/Datasets/items.csv', encoding='utf-8')
+
 merchantID = st.text_input("Enter your merchant ID:")
 if merchantID:
     st.write("Your merchant ID:", merchantID)
     location=loadMerchantDf().loc[loadMerchantDf()['merchant_id'] == merchantID, 'city_id'].values[0]
     st.write("Your location:", location)
+    
     def convert_to_number(value):
         try:
             # Try to convert the value to an integer if it's a numeric string (e.g. "8")
@@ -127,6 +130,7 @@ if merchantID:
             result[col] = result[col].fillna(0).astype(int)
 
         return result.drop(columns=['item_name_clean'])
+    
     def getItemsKeywordsAtLocation(location):
         itemsKeywordViewDf = mergeKeyword()
         merchantDf=loadMerchantDf()
@@ -135,6 +139,7 @@ if merchantID:
             itemsKeywordViewDf['merchant_id'].isin(merchant_ids_in_city)
         ]
         return itemsKeywordViewDf
+    
     def viewInterpretion(merchantID):
         # Merge keyword data (assuming mergeKeyword is a function you have defined)
         itemsKeywordDf = mergeKeyword()
@@ -230,6 +235,7 @@ if merchantID:
             # Stop if the required number of results is reached
             if i == numResultsFoodView:
                 break
+            
     def analyzeFoodType(merchantID, location):
         # Load data
         itemsKeywordAnalyzeFoodTypeDf = getItemsKeywordsAtLocation(location)
@@ -295,30 +301,175 @@ if merchantID:
 
         st.write(strOutput)
         st.dataframe(filteredDf[['item_id','cuisine_tag','item_name','item_price','price_cluster_label']])
-        
-        
-    #1) Find the popular merchants based on frequency of sales in current location
-    st.subheader('1) Find the popular merchants that has the most frequent of sales at current location')
-    numResults = st.text_input("Enter number of results:", key="numResult")
-    if(numResults):
-        popularMerchant(location,numResults)
-    else:
-        popularMerchant(location,5)
-        
-    #2) Interpret view (Number of search by users)
-    st.subheader('2) Interpret view (Number of search by users)')
-    viewInterpretion(merchantID)
-        
-    #3) Determine the most viewed food 
-    st.subheader('3) Determine the most viewed food in your shop')
-    numResultsFoodView = st.text_input("Enter number of results:", key="numResultsFoodView")
-    if(numResultsFoodView):
-        viewMostViewedFood(merchantID, numResultsFoodView)
-    else:
-        viewMostViewedFood(merchantID,5)
-        
-    #4) Analyze the food type and its competition at your location
-    st.subheader('4) Analyze the food type and its competition at your location')
-    analyzeFoodType(merchantID, location)
-    
-    
+
+
+import streamlit as st
+import random
+import re
+from datetime import date
+
+def promptUser():
+    st.title("📊 GAI 4.0o")
+
+    # === Chat Assistant Input ===
+    st.subheader("💬 Ask me anything!")
+    user_input = st.text_input("Your question:")
+
+    # Session states
+    if "action" not in st.session_state:
+        st.session_state["action"] = None
+    if "awaiting_number" not in st.session_state:
+        st.session_state["awaiting_number"] = False
+    if "user_name" not in st.session_state:
+        st.session_state["user_name"] = None
+
+    # Jokes and greetings
+    jokes = [
+        "Why did the developer go broke? Because he used up all his cache!",
+        "Why do Java developers wear glasses? Because they can't C#!",
+        "How does a computer tell you it needs more sleep? It says: 'I need to crash.'",
+        "Why did the robot go on vacation? It needed to recharge its batteries!"
+    ]
+
+    greetings = [
+        "Hey there! 👋 What can I help you with today?",
+        "Hello! I'm all ears 🧠",
+        "Yo! 😎 Ready to explore some data?",
+        "Greetings, data adventurer! 🧭"
+    ]
+
+    farewells = [
+        "See you next time! 🚀",
+        "Bye-bye! Don't forget to recharge 💡",
+        "Later, alligator 🐊",
+        "Peace out! ✌️"
+    ]
+
+    # Convert string to number
+    def convert_to_number(num_str):
+        try:
+            return int(num_str)
+        except ValueError:
+            return None
+
+    # Extract action and number
+    def extract_action_and_number(input_text):
+        input_text = input_text.lower()
+        number = None
+
+        if any(word in input_text for word in ["hi", "hello", "hey"]):
+            st.success(random.choice(greetings))
+            return None, None
+
+        elif "your name" in input_text:
+            st.success("I'm GAI 4.0o, your friendly data buddy! 🤖")
+            return None, None
+
+        elif "my name is" in input_text:
+            name_match = re.search(r"my name is ([a-zA-Z]+)", input_text)
+            if name_match:
+                name = name_match.group(1).capitalize()
+                st.session_state["user_name"] = name
+                st.success(f"Nice to meet you, {name}! 😊")
+            else:
+                st.info("I didn't catch your name. Try 'My name is Alex'.")
+            return None, None
+
+        elif "who am i" in input_text and st.session_state["user_name"]:
+            st.success(f"You're {st.session_state['user_name']}, of course! 😄")
+            return None, None
+
+        elif "joke" in input_text:
+            st.success(random.choice(jokes))
+            return None, None
+
+        elif "date" in input_text:
+            st.success(f"Today's date is {date.today().strftime('%A, %d %B %Y')} 📅")
+            return None, None
+
+        elif any(word in input_text for word in ["bye", "goodbye", "see you"]):
+            st.success(random.choice(farewells))
+            return None, None
+
+        number_match = re.search(r'\b\d+\b', input_text)
+        if number_match:
+            number = int(number_match.group())
+
+        # Determine intent
+        if any(keyword in input_text for keyword in [
+            "top food", "most viewed food", "best food", "popular food", "famous food", 
+            "highly viewed food", "frequently viewed items", "most clicked food", "food with most views"
+        ]):
+            return "most_viewed_food", number
+
+        elif any(keyword in input_text for keyword in [
+            "popular merchants", "top merchants", "best merchants", "frequent sellers", 
+            "most visited merchants", "most viewed merchants", "high-ranking merchants",
+            "famous merchants", "top rated sellers", "trending sellers", "top merchant list"
+        ]):
+            return "popular_merchant", number
+
+        elif any(keyword in input_text for keyword in [
+            "exposure rate", "view interpretation", "item exposure", "view to buy ratio", 
+            "interpret exposure", "popularity interpretation", "item view stats", 
+            "engagement rate", "click rate", "visibility analysis"
+        ]):
+            return "exposure_rate", None
+
+        elif any(keyword in input_text for keyword in [
+            "food type", "cuisine type", "type of food", "type of cuisine", "food category", 
+            "cuisine classification", "food variety", "kind of food", "food genre", 
+            "meal type", "cuisine analysis", "menu type"
+        ]):
+            return "food_type", None
+
+        return None, None
+
+    # === Main Chat Logic ===
+    if user_input:
+        action, num = extract_action_and_number(user_input)
+        st.session_state["action"] = action
+
+        if action:
+            if num is not None:
+                if isinstance(num, int) and num > 0:
+                    if action == "most_viewed_food":
+                        viewMostViewedFood(merchantID, num)
+                    elif action == "popular_merchant":
+                        popularMerchant(location, num)
+                    st.session_state["action"] = None
+                    st.session_state["awaiting_number"] = False
+                else:
+                    st.error("Please enter a valid number greater than 0.")
+            else:
+                if action in ["most_viewed_food", "popular_merchant"]:
+                    st.session_state["awaiting_number"] = True
+                    st.info("Could you tell me how many results you want to see?")
+                else:
+                    if action == "exposure_rate":
+                        viewInterpretion(merchantID)
+                    elif action == "food_type":
+                        analyzeFoodType(merchantID, location)
+                    st.session_state["action"] = None
+        elif not st.session_state["awaiting_number"]:
+            st.info("🔎 You can ask about trending foods, top merchants, exposure stats, or cuisine analysis. Try something like:\n- 'Show me top 5 foods'\n- 'What are the most viewed merchants?'\n- 'Analyze food types by location'\n- 'Tell me a joke' 😄")
+
+    # === Prompt for missing number ===
+    if st.session_state["awaiting_number"]:
+        num_input = st.text_input("How many results would you like to see?")
+
+        if num_input:
+            num = convert_to_number(num_input)
+            if isinstance(num, int) and num > 0:
+                if st.session_state["action"] == "most_viewed_food":
+                    viewMostViewedFood(merchantID, num)
+                elif st.session_state["action"] == "popular_merchant":
+                    popularMerchant(location, num)
+
+                st.session_state["awaiting_number"] = False
+                st.session_state["action"] = None
+            else:
+                st.error("Oops! I need a positive number. Try again?")
+            
+if __name__ == "__main__":
+    promptUser()
