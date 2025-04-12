@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import google.generativeai as genai
 import re
 
-st.title("Generative Functions")
+st.title("Powered by: Team Last Minute")
 
 
 def loadTransactionDataDf():
@@ -223,17 +223,60 @@ if merchantID:
             # Merge keyword data (assuming mergeKeyword is defined)
             itemsKeywordDf = mergeKeyword()
             # Filter the dataframe based on the given merchant ID
-            filteredDf = analyzeFoodType(merchantID, location)
+            # Load data
+            itemsKeywordAnalyzeFoodTypeDf = getItemsKeywordsAtLocation(location)
 
+            # Filter current merchant data
+            filteredDf = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['merchant_id'] == merchantID]
+
+            # Calculate cuisine tag percentages for the merchant
+            value_percentages = (filteredDf['cuisine_tag'].value_counts(normalize=True) * 100).round(2)
+            mode_array = np.array([[tag, pct] for tag, pct in value_percentages.items()])
+
+            i = 1
+            storeTypeAndSell = []
+
+            # Prepare the output DataFrame
+            filteredDf = filteredDf.copy()
+            filteredDf['price_cluster_label'] = None
+
+            # Count total unique merchants in city for competition calculation
+
+            for foodType, percentage in mode_array:
+                # Filter city-wide items of the same cuisine
+                filtered_cuisine = itemsKeywordAnalyzeFoodTypeDf[itemsKeywordAnalyzeFoodTypeDf['cuisine_tag'] == (foodType)]
+
+                # Count number of unique merchants selling this cuisine
+                merchant_frequency = filtered_cuisine['merchant_id'].nunique()
+                storeTypeAndSell.append([foodType, merchant_frequency])
+
+                # --- Price Clustering ---
+                city_prices = filtered_cuisine['item_price'].values.reshape(-1, 1)
+
+                if len(city_prices) >= 3:
+                    kmeans = KMeans(n_clusters=3, n_init=10, random_state=42)
+                    kmeans.fit(city_prices)
+
+                    # Get cluster label mapping
+                    cluster_order = sorted(range(3), key=lambda i: kmeans.cluster_centers_[i][0])
+                    label_map = {cluster_order[0]: 'cheap', cluster_order[1]: 'moderate', cluster_order[2]: 'expensive'}
+
+                    # Predict clusters for this merchant's items with the same cuisine
+                    mask = filteredDf['cuisine_tag'] == (foodType)
+                    shop_prices = filteredDf.loc[mask, 'item_price'].values.reshape(-1, 1)
+                    clusters = kmeans.predict(shop_prices)
+                    filteredDf.loc[mask, 'price_cluster_label'] = [label_map[c] for c in clusters]
+                else:
+                    # If not enough city data for clustering
+                    filteredDf.loc[filteredDf['cuisine_tag'] == (foodType), 'price_cluster_label'] = 'not_enough_data'
+            
             # Calculate the average views for the merchant
-            averageViews = filteredDf["view"].mean()
+            averageViews = filteredDf['view'].mean()
 
             # Step 3: Apply KMeans clustering on the entire 'view' feature of the whole dataset
             # (Here we use n_init='auto' per your updated code, if your sklearn version supports it)
-            kmeans = KMeans(n_clusters=3, random_state=42, n_init="auto")
-            itemsKeywordDf["view_category"] = kmeans.fit_predict(
-                itemsKeywordDf[["view"]]
-            )
+            kmeans = KMeans(n_clusters=3, random_state=42, n_init='auto')
+            itemsKeywordDf['view_category'] = kmeans.fit_predict(itemsKeywordDf[['view']])
 
             # Step 4: Find the cluster of the merchant's average views based on the overall 'view' distribution
             average_value_cluster = kmeans.predict([[averageViews]])
@@ -241,34 +284,26 @@ if merchantID:
             # Step 5: Interpret the results based on the cluster
             doingPerformance = ""
             if average_value_cluster[0] == 0:
-                doingPerformance += (
-                    "It looks like the exposure rate is lower than expected. "
-                    "You may subscribe to Grab Plus to boost your reputation. "
-                    "Increasing exposure will help increase brand awareness and customer acquisition, "
-                    "ultimately leading to higher conversions and long-term success."
-                )
+                doingPerformance += ("It looks like the exposure rate is lower than expected. "
+                                    "You may subscribe to Grab Plus to boost your reputation. "
+                                    "Increasing exposure will help increase brand awareness and customer acquisition, "
+                                    "ultimately leading to higher conversions and long-term success.")
             elif average_value_cluster[0] == 1:
-                doingPerformance += (
-                    "The exposure rate is currently at a moderate level, which is a solid foundation. "
-                    "You're reaching a decent portion of your target audience, but there is still room for growth "
-                    "to maximize visibility. With some additional effort in areas like targeted advertising, partnerships, "
-                    "or expanding content, you could push that exposure rate higher to reach even more potential customers."
-                )
+                doingPerformance += ("The exposure rate is currently at a moderate level, which is a solid foundation. "
+                                    "You're reaching a decent portion of your target audience, but there is still room for growth "
+                                    "to maximize visibility. With some additional effort in areas like targeted advertising, partnerships, "
+                                    "or expanding content, you could push that exposure rate higher to reach even more potential customers.")
             else:
-                doingPerformance += (
-                    "Your exposure rate is really strong right now, which is fantastic! This means that your brand "
-                    "or product is reaching a wide audience, increasing visibility and the likelihood of conversions. "
-                    "To keep this momentum going, it’s important to maintain and possibly even enhance this exposure "
-                    "with regular engagement and targeted strategies that keep the audience interested."
-                )
+                doingPerformance += ("Your exposure rate is really strong right now, which is fantastic! This means that your brand "
+                                    "or product is reaching a wide audience, increasing visibility and the likelihood of conversions. "
+                                    "To keep this momentum going, it’s important to maintain and possibly even enhance this exposure "
+                                    "with regular engagement and targeted strategies that keep the audience interested.")
 
-            st.write(
-                f"Your store has an average view of {averageViews:.2f} and {doingPerformance}"
-            )
+            st.write(f"Your store has an average view of {averageViews:.2f} and {doingPerformance}")
 
             # Get all merchants in the selected location
             totalDf = getItemsKeywordsAtLocation(location)
-            view_data = totalDf["view"].dropna().values.reshape(-1, 1)
+            view_data = totalDf['view'].dropna().values.reshape(-1, 1)
 
             # Optional: only cluster if enough data points
             if len(view_data) >= 3:
@@ -276,75 +311,53 @@ if merchantID:
                 kmeans.fit(view_data)
 
                 filteredDf = filteredDf.copy()  # avoid SettingWithCopyWarning
-                filteredDf["view_cluster"] = kmeans.predict(
-                    filteredDf["view"].values.reshape(-1, 1)
-                )
+                filteredDf['view_cluster'] = kmeans.predict(filteredDf['view'].values.reshape(-1, 1))
 
                 # Map cluster labels to names based on center order (e.g., low, medium, high)
                 centers = kmeans.cluster_centers_.flatten()
                 ordered_labels = np.argsort(centers)
-                label_map = {
-                    ordered_labels[0]: "low_view",
-                    ordered_labels[1]: "medium_view",
-                    ordered_labels[2]: "high_view",
-                }
+                label_map = {ordered_labels[0]: 'low_view',
+                            ordered_labels[1]: 'medium_view',
+                            ordered_labels[2]: 'high_view'}
 
-                filteredDf["view_cluster_label"] = filteredDf["view_cluster"].map(
-                    label_map
-                )
+                filteredDf['view_cluster_label'] = filteredDf['view_cluster'].map(label_map)
             else:
-                filteredDf["view_cluster_label"] = "not_enough_data"
+                filteredDf['view_cluster_label'] = 'not_enough_data'
 
             # Calculate order/view ratio
-            filteredDf["order_view_ratio"] = filteredDf["order"] / filteredDf["view"]
+            filteredDf['order_view_ratio'] = filteredDf['order'] / filteredDf['view']
 
             # Create new column for order-to-view conversion category
             # Example thresholds: < 1% = low, 1%-3% = medium, >=3% = high.
             def conversion_category(ratio):
                 if ratio < 0.01:
-                    return "low"
+                    return 'low'
                 elif ratio < 0.03:
-                    return "medium"
+                    return 'medium'
                 else:
-                    return "high"
+                    return 'high'
 
-            filteredDf["order_to_view_conversion"] = filteredDf[
-                "order_view_ratio"
-            ].apply(conversion_category)
+            filteredDf['order_to_view_conversion'] = filteredDf['order_view_ratio'].apply(conversion_category)
 
             # Filter rows where order is <= 1% of view and create a text message
-            lowConversionDf = filteredDf[filteredDf["order_view_ratio"] <= 0.01]
+            lowConversionDf = filteredDf[filteredDf['order_view_ratio'] <= 0.01]
             if not lowConversionDf.empty:
-                message = "⚠️ The following items have low order-to-view conversion (≤ 1%):\n\n"
+                message = "⚠ The following items have low order-to-view conversion (≤ 1%):\n\n"
                 for _, row in lowConversionDf.iterrows():
-                    message += (
-                        f"- {row['item_name']} has {int(row['order'])} orders and {int(row['view'])} views "
-                        f"(conversion: {round(row['order_view_ratio']*100, 2)}%)\n"
-                    )
-                    if row["price_cluster_label"] == "expensive":
+                    message += (f"- {row['item_name']} has {int(row['order'])} orders and {int(row['view'])} views "
+                                f"(conversion: {round(row['order_view_ratio']*100, 2)}%)\n")
+                    if row['price_cluster_label'] == 'expensive':
                         message += f"The price of {row['item_name']} is too high compared with other merchants.\n\n"
                     else:
-                        message += "\n"
+                        message+="\n"
                 st.text(message)
             else:
                 st.text("✅ All items have a healthy order-to-view conversion rate.")
 
             # Display a subset of columns in filteredDf including the new conversion category.
-            st.dataframe(
-                filteredDf[
-                    [
-                        "item_id",
-                        "item_name",
-                        "item_price",
-                        "view",
-                        "menu",
-                        "checkout",
-                        "order",
-                        "view_cluster_label",
-                        "order_to_view_conversion",
-                    ]
-                ]
-            )
+            st.dataframe(filteredDf[['item_id', 'item_name', 'item_price', 'view', 
+                                    'menu', 'checkout', 'order', 'view_cluster_label',
+                                    'order_to_view_conversion']])
 
         def viewMostViewedFood(merchantID, numResultsFoodView):
             # Merge keyword data (assuming mergeKeyword is a function you have defined)
@@ -474,7 +487,6 @@ if merchantID:
                     ]
                 ]
             )
-            return filteredDf
 
         def analyzeDailySales(merchantID, todayDate, numResults):
             merchantDateDf = sliceTransactionByMerchantAndDate(merchantID, todayDate)
