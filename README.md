@@ -15,5 +15,5 @@ https://www.canva.com/design/DAGkYK4yXJU/ZBUmeDwqwmKZsgn99RJ-iQ/view?utm_content
 ## ⚠️ Use your own Gemini API key for secret.motl
 
 To fully experience the our program, please use your own Gemini API key on "secret.motl".
-This ensures secure and personalized access during testing.
+This ensures secure and personalized access during testing. Remember to add this file under a folder named ".streamlit"
 
