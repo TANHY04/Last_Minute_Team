@@ -5,6 +5,10 @@ We crafted the entire app flow and user experience using Figma.
 👉 View our Figma Prototype
 https://www.figma.com/design/nZWH1P8szS1F1jbNWacE6M/UMHackathon?node-id=0-1&t=JjOMFhERBcH1PX0O-1
 
+## 🎥 Demo Video (Google Drive)
+Watch our product in action and see how it works in real-time:
+👉 View Demo Video
+https://drive.google.com/file/d/1tAgwetwZwOtLyqphqMzkpI-zjy70yP8I/view?usp=sharing
 
 ## ✨ Presentation Slide (Canva)
 
